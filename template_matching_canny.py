@@ -20,25 +20,35 @@ PATH_IMAGENES = 'TP3/images/'
 PATH_TEMPLATE = 'TP3/template/'
 
 # Parámetros de Matching
-METODO_MATCHING = cv2.TM_SQDIFF_NORMED
+METODO_MATCHING = cv2.TM_CCOEFF_NORMED
 
 # Parámetros de Pirámide de Escala
-ESCALA_MIN = 0.3  # Comenzar desde escalas más pequeñas
-ESCALA_MAX = 3
-PASO_ESCALA = 0.1
+ESCALA_MIN = 0.4  # Comenzar desde escalas más pequeñas
+ESCALA_MAX = 2
+PASO_ESCALA = 0.4
 
 # Parámetros de Canny
-UMBRAL_CANNY_MIN = 50
-UMBRAL_CANNY_MAX = 200
+UMBRAL_CANNY_MIN = 100
+UMBRAL_CANNY_MAX = 250
 
 # Parámetros de Filtro de Ruido (antes de Canny)
 FILTRAR_RUIDO = True
 KERNEL_GAUSSIANO = (5, 5)
-SIGMA_GAUSSIANO = 1.4
+SIGMA_GAUSSIANO = 1.5
 
 # Parámetros de Detección y NMS
-UMBRAL_MATCHING = 15.0  # Para SQDIFF_NORMED: ajustado para valores reales encontrados
-UMBRAL_IOU_NMS = 0.3
+UMBRAL_MATCHING = 0.04  # Para SQDIFF_NORMED: valor cercano a cero para buenas coincidencias
+UMBRAL_SIMPLE_DETECCION = 0.04  # Para CCOEFF_NORMED: umbral inicial de detección
+UMBRAL_FINAL_NMS = 0.04  # Para CCOEFF_NORMED: umbral final en NMS
+UMBRAL_IOU_NMS = 0.04
+
+# Parámetros de tamaño mínimo de template
+TAMAÑO_MINIMO_TEMPLATE = 15  # Tamaño mínimo en píxeles para escalas válidas
+
+# Parámetros de límites en NMS
+MINIMO_CANDIDATOS_NMS = 3  # Mínimo de candidatos antes de tomar los mejores
+MAXIMO_MEJORES_CANDIDATOS = 10  # Máximo de mejores candidatos a tomar
+LIMITE_DETECCIONES_FINALES = 10  # Límite de detecciones finales en NMS
 
 # Parámetros de visualización
 TAMAÑO_FIGURA = (15, 10)
@@ -51,8 +61,7 @@ EARLY_STOPPING = False
 LIMITE_DETECCIONES_TOTALES = 10000
 
 # Parámetros de filtrado por confianza
-UMBRAL_CONFIANZA_NMS = 0.02  # Más estricto para SQDIFF_NORMED
-UMBRAL_PERCENTIL_MALAS = 0.2
+UMBRAL_CONFIANZA_NMS = 0.04  # Más estricto para SQDIFF_NORMED
 
 
 def cargar_template(ruta_template: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -77,12 +86,12 @@ def cargar_template(ruta_template: str) -> Tuple[np.ndarray, np.ndarray, np.ndar
     else:
         template_filtrado = template_original
     
-    # Aplicar detector de bordes Canny
+    # Aplicar detector de bordes Canny (devuelve valores 0 o 255)
     template_procesado = cv2.Canny(
-        template_filtrado, UMBRAL_CANNY_MIN, UMBRAL_CANNY_MAX).astype(np.float32)
+        template_filtrado, UMBRAL_CANNY_MIN, UMBRAL_CANNY_MAX)
     
     # Crear versión invertida
-    template_procesado_inv = 255.0 - template_procesado
+    template_procesado_inv = 255 - template_procesado
     
     # Crear máscara donde hay bordes detectados
     mascara = (template_procesado > 0).astype(np.uint8) * 255
@@ -109,11 +118,11 @@ def preprocesar_imagen(ruta_imagen: str) -> Tuple[np.ndarray, np.ndarray]:
     else:
         imagen_filtrada = imagen_original
     
-    # Aplicar detector de bordes Canny
+    # Aplicar detector de bordes Canny (devuelve valores 0 o 255)
     imagen_procesada = cv2.Canny(
-        imagen_filtrada, UMBRAL_CANNY_MIN, UMBRAL_CANNY_MAX).astype(np.float32)
+        imagen_filtrada, UMBRAL_CANNY_MIN, UMBRAL_CANNY_MAX)
     
-    return imagen_original.astype(np.float32), imagen_procesada
+    return imagen_original, imagen_procesada
 
 
 def redimensionar_template_y_mascara(template: np.ndarray, mascara: np.ndarray, escala: float) -> Tuple[np.ndarray, np.ndarray]:
@@ -124,27 +133,10 @@ def redimensionar_template_y_mascara(template: np.ndarray, mascara: np.ndarray, 
     nuevo_ancho = max(1, int(template.shape[1] * escala))
     nuevo_alto = max(1, int(template.shape[0] * escala))
 
-    # Verificar que las dimensiones mínimas sean razonables para Canny
-    if nuevo_ancho < 5 or nuevo_alto < 5:
-        print(f"Template muy pequeño para escala {escala}: {nuevo_ancho}x{nuevo_alto}")
-        return None, None
-
     try:
         template_redimensionado = cv2.resize(template, (nuevo_ancho, nuevo_alto))
         mascara_redimensionada = cv2.resize(mascara, (nuevo_ancho, nuevo_alto))
-        
-        # Verificar que el redimensionamiento no haya causado problemas
-        if template_redimensionado.size == 0 or mascara_redimensionada.size == 0:
-            print(f"Error en redimensionamiento para escala {escala}")
-            return None, None
-            
-        # Para escalas muy pequeñas, verificar que aún hay información útil
-        if escala < 0.5:
-            # Verificar que hay suficientes bordes detectados
-            num_bordes = np.sum(template_redimensionado > 0)
-            if num_bordes < 10:  # Mínimo 10 píxeles de borde
-                print(f"Insuficientes bordes para escala {escala}: {num_bordes} píxeles")
-                return None, None
+
         
         return template_redimensionado, mascara_redimensionada
         
@@ -175,121 +167,32 @@ def procesar_escala_individual(args):
     # Verificar si el template escalado es más grande que la imagen
     if (template_escalado.shape[0] > imagen_procesada.shape[0] or
             template_escalado.shape[1] > imagen_procesada.shape[1]):
-        # Crear un mapa sintético con valores que indiquen que no se pudo procesar
-        if metodo_matching in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-            mapa_sintetico = np.array([[1.0]], dtype=np.float32)
-        else:
-            mapa_sintetico = np.array([[0.0]], dtype=np.float32)
-        
+        # Template más grande que imagen - no se puede procesar
+        mapa_sintetico = np.array([[1.0]], dtype=np.float32)
         mapas_escala.append((mapa_sintetico, escala, "directo"))
         return detecciones_escala, mapas_escala
 
     try:
-        # Convertir a float32 para evitar problemas
-        img_match = imagen_procesada.astype(np.float32)
-        temp_match = template_escalado.astype(np.float32)
+        # Usar directamente las imágenes Canny (uint8) sin conversión
+        resultado = cv2.matchTemplate(
+            imagen_procesada, template_escalado, metodo_matching)
 
-        # Realizar template matching una sola vez
-        resultado = None
-        try:
-            mask_match = mascara_escalada.astype(np.uint8)
-            resultado = cv2.matchTemplate(
-                img_match, temp_match, metodo_matching, mask=mask_match)
-        except Exception as e:
-            # Si falla con máscara, usar sin máscara
-            try:
-                resultado = cv2.matchTemplate(
-                    img_match, temp_match, metodo_matching)
-            except Exception as e2:
-                print(f"Error en template matching escala {escala}: {e2}")
-                if metodo_matching in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                    mapa_sintetico = np.array([[1.0]], dtype=np.float32)
-                else:
-                    mapa_sintetico = np.array([[0.0]], dtype=np.float32)
-                mapas_escala.append((mapa_sintetico, escala, "directo"))
-                return detecciones_escala, mapas_escala
-
-        # Validar resultado con manejo más robusto
-        if resultado is None:
-            print(f"Resultado None para escala {escala}")
-            return detecciones_escala, mapas_escala
-            
-        if resultado.size == 0:
-            print(f"Resultado vacío para escala {escala}")
-            return detecciones_escala, mapas_escala
-            
-        # Manejo mejorado de NaN/Inf - intentar limpiar en lugar de descartar
-        num_nan = np.sum(np.isnan(resultado))
-        num_inf = np.sum(np.isinf(resultado))
-        total_pixels = resultado.size
-        
-        if num_nan > 0 or num_inf > 0:
-            porcentaje_corrupto = (num_nan + num_inf) / total_pixels * 100
-            print(f"Escala {escala}: {num_nan} NaN, {num_inf} Inf ({porcentaje_corrupto:.1f}% corrupto)")
-            
-            if porcentaje_corrupto > 50:
-                # Si más del 50% está corrupto, descartar
-                print(f"Descartando escala {escala} - demasiado corrupta")
-                return detecciones_escala, mapas_escala
-            else:
-                # Intentar limpiar reemplazando NaN/Inf con valores válidos
-                print(f"Limpiando NaN/Inf para escala {escala}")
-                # Para SQDIFF_NORMED, reemplazar con valores altos (malos matches)
-                if metodo_matching == cv2.TM_SQDIFF_NORMED:
-                    resultado = np.nan_to_num(resultado, nan=10.0, posinf=10.0, neginf=10.0)
-                else:
-                    resultado = np.nan_to_num(resultado, nan=0.0, posinf=1.0, neginf=0.0)
-
-        # SIEMPRE agregar el mapa, incluso si no hay detecciones
         mapas_escala.append((resultado, escala, "directo"))
 
-        # OPTIMIZACIÓN: Buscar COINCIDENCIAS con threshold dinámico como OpenCV
-        # Calcular threshold dinámico basado en estadísticas del mapa de correlación
-        media_resultado = np.mean(resultado)
-        std_resultado = np.std(resultado)
+        # DEBUG: Mostrar estadísticas del resultado
+        min_val = resultado.min()
+        max_val = resultado.max()
+        mean_val = resultado.mean()
+        print(f"Escala {escala:.1f}x: min={min_val:.3f}, max={max_val:.3f}, mean={mean_val:.3f}")
+
+        # FILTRO SIMPLE: Para CCOEFF_NORMED, valores altos = buenas coincidencias
+        ubicaciones = np.where(resultado >= UMBRAL_SIMPLE_DETECCION)
         
-        # 1. Buscar BUENAS COINCIDENCIAS con threshold adaptativo más estricto
-        if metodo_matching == cv2.TM_SQDIFF_NORMED:
-            # Para SQDIFF_NORMED, los MEJORES matches son valores BAJOS (mínimos globales)
-            min_valor = resultado.min()
-            max_valor = resultado.max()
-            rango = max_valor - min_valor
-            # Threshold adaptativo MÁS ESTRICTO: mínimo + 5% del rango para capturar solo los mejores matches
-            threshold_buenas = min_valor + (rango * 0.05)
-            # También usar el umbral fijo si es más restrictivo
-            threshold_buenas = min(threshold_buenas, umbral_matching)
-            ubicaciones_buenas = np.where(resultado <= threshold_buenas)
-            tipo_buenas = 'minimos_globales'
-        elif metodo_matching == cv2.TM_SQDIFF:
-            threshold_buenas = min(umbral_matching, media_resultado - 2*std_resultado)
-            ubicaciones_buenas = np.where(resultado <= threshold_buenas)
-            tipo_buenas = 'minimos_globales'
-        else:
-            # Para CCORR y CCOEFF, los buenos matches son valores ALTOS (máximos globales)
-            threshold_buenas = max(umbral_matching, media_resultado + 2*std_resultado)
-            ubicaciones_buenas = np.where(resultado >= threshold_buenas)
-            tipo_buenas = 'maximos_globales'
+        print(f"  Encontradas {len(ubicaciones[0])} ubicaciones con umbral >= {UMBRAL_SIMPLE_DETECCION}")
         
-        # Limitar número de buenas coincidencias para eficiencia
-        if len(ubicaciones_buenas[0]) > 50:
-            # Tomar solo las 50 mejores
-            valores_buenas = resultado[ubicaciones_buenas]
-            if metodo_matching == cv2.TM_SQDIFF_NORMED:
-                indices_mejores = np.argsort(valores_buenas)[:50]  # Los 50 valores MÁS PEQUEÑOS
-            elif metodo_matching == cv2.TM_SQDIFF:
-                indices_mejores = np.argsort(valores_buenas)[:50]  # Los 50 valores MÁS PEQUEÑOS
-            else:
-                indices_mejores = np.argsort(valores_buenas)[-50:]  # Los 50 valores MÁS GRANDES
-            
-            ubicaciones_buenas = (ubicaciones_buenas[0][indices_mejores], 
-                                 ubicaciones_buenas[1][indices_mejores])
-            valores_buenas = valores_buenas[indices_mejores]
-        else:
-            valores_buenas = resultado[ubicaciones_buenas]
-        
-        # Agregar buenas coincidencias
-        for i, (y, x) in enumerate(zip(ubicaciones_buenas[0], ubicaciones_buenas[1])):
-            confianza = float(valores_buenas[i])
+        # Agregar todas las detecciones que pasen el umbral
+        for y, x in zip(ubicaciones[0], ubicaciones[1]):
+            confianza = float(resultado[y, x])
             if np.isnan(confianza) or np.isinf(confianza):
                 continue
 
@@ -301,59 +204,7 @@ def procesar_escala_individual(args):
                 'confianza': confianza,
                 'escala': escala,
                 'version': 'directo',
-                'tipo_correlacion': tipo_buenas
-            })
-
-        # 2. Buscar MALAS COINCIDENCIAS con threshold adaptativo estricto
-        if metodo_matching == cv2.TM_SQDIFF_NORMED:
-            # Para SQDIFF_NORMED, las MALAS coincidencias son valores ALTOS (cerca del máximo)
-            # Threshold adaptativo MÁS ESTRICTO: máximo - 5% del rango para capturar solo las peores matches
-            threshold_malas = max_valor - (rango * 0.05)
-            # También usar un threshold mínimo de 0.95 para capturar las peores coincidencias
-            threshold_malas = max(threshold_malas, 0.95)
-            ubicaciones_malas = np.where(resultado >= threshold_malas)
-            tipo_malas = 'maximos_globales'
-        elif metodo_matching == cv2.TM_SQDIFF:
-            threshold_malas = np.percentile(resultado, 98)  # Solo el 2% peor
-            ubicaciones_malas = np.where(resultado >= threshold_malas)
-            tipo_malas = 'maximos_globales'
-        else:
-            # Para CCORR y CCOEFF, las malas coincidencias son valores BAJOS
-            threshold_malas = np.percentile(resultado, 2)  # Solo el 2% peor
-            ubicaciones_malas = np.where(resultado <= threshold_malas)
-            tipo_malas = 'minimos_globales'
-        
-        # Limitar malas coincidencias también para eficiencia (menos malas que buenas)
-        if len(ubicaciones_malas[0]) > 10:  # Solo 10 malas vs 50 buenas
-            valores_malas = resultado[ubicaciones_malas]
-            if metodo_matching == cv2.TM_SQDIFF_NORMED:
-                indices_peores = np.argsort(valores_malas)[-10:]  # Los 10 valores MÁS GRANDES
-            elif metodo_matching == cv2.TM_SQDIFF:
-                indices_peores = np.argsort(valores_malas)[-10:]  # Los 10 valores MÁS GRANDES
-            else:
-                indices_peores = np.argsort(valores_malas)[:10]   # Los 10 valores MÁS PEQUEÑOS
-            
-            ubicaciones_malas = (ubicaciones_malas[0][indices_peores],
-                                ubicaciones_malas[1][indices_peores])
-            valores_malas = valores_malas[indices_peores]
-        else:
-            valores_malas = resultado[ubicaciones_malas]
-        
-        # Agregar malas coincidencias
-        for i, (y, x) in enumerate(zip(ubicaciones_malas[0], ubicaciones_malas[1])):
-            confianza = float(valores_malas[i])
-            if np.isnan(confianza) or np.isinf(confianza):
-                continue
-
-            detecciones_escala.append({
-                'x': int(x),
-                'y': int(y),
-                'ancho': template_escalado.shape[1],
-                'alto': template_escalado.shape[0],
-                'confianza': confianza,
-                'escala': escala,
-                'version': 'invertido',
-                'tipo_correlacion': tipo_malas
+                'tipo_correlacion': 'umbral_simple'
             })
 
     except Exception as e:
@@ -385,13 +236,9 @@ def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
         
         # CRITERIO ADAPTATIVO: Para Canny necesitamos templates grandes suficiente
         # para que los bordes se detecten, pero también queremos escalas pequeñas
-        min_size = 15  # Mínimo más pequeño pero realista para Canny
-        if nuevo_ancho >= min_size and nuevo_alto >= min_size:
+        if nuevo_ancho >= TAMAÑO_MINIMO_TEMPLATE and nuevo_alto >= TAMAÑO_MINIMO_TEMPLATE:
             escalas_validas.append(escala)
     
-    if not escalas_validas:
-        print("ADVERTENCIA: No se encontraron escalas válidas, usando escala 1.0")
-        escalas_validas = [1.0]
     
     if MOSTRAR_PROGRESO:
         print(f"Probando {len(escalas_validas)} escalas válidas (de {len(escalas)} generadas)...")
@@ -406,12 +253,6 @@ def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
         )
         detecciones.extend(detecciones_escala)
         mapas_resultado.extend(mapas_escala)
-        
-        # Early stopping
-        if EARLY_STOPPING and len(detecciones) > LIMITE_DETECCIONES_TOTALES:
-            if MOSTRAR_PROGRESO:
-                print(f"Early stopping: {len(detecciones)} detecciones encontradas")
-            break
 
     # Ordenar mapas por escala
     mapas_resultado.sort(key=lambda x: x[1])
@@ -426,70 +267,41 @@ def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
 
 def aplicar_nms(detecciones: List[Dict]) -> List[Dict]:
     """
-    Aplica Non-Maximum Suppression CORREGIDO para SQDIFF_NORMED.
-    Para SQDIFF_NORMED: 0.0 = coincidencia perfecta, valores más altos = peores coincidencias
+    NMS SIMPLIFICADO: Solo filtra por umbral cercano a cero y elimina solapamientos.
     """
     if not detecciones:
         return []
 
     print(f"DEBUG NMS: Recibidas {len(detecciones)} detecciones")
     
-    # Mostrar algunas confianzas para debug
-    if detecciones:
-        confianzas_sample = [d['confianza'] for d in detecciones[:5]]
-        print(f"DEBUG NMS: Primeras 5 confianzas: {confianzas_sample}")
-
-    # PASO 1: Filtrar por confianza directamente
-    if METODO_MATCHING == cv2.TM_SQDIFF_NORMED:
-        # Para SQDIFF_NORMED: MEJORES = valores MÁS BAJOS (cercanos a 0)
-        # Usar umbral adaptativo basado en los valores reales
-        confianzas = [d['confianza'] for d in detecciones]
-        confianza_min = min(confianzas)
-        confianza_media = np.mean(confianzas)
-        
-        # Umbral dinámico: permitir hasta la mitad del rango desde el mínimo
-        umbral_dinamico = confianza_min + (confianza_media - confianza_min) * 0.5
-        
-        print(f"DEBUG NMS: Confianza mín: {confianza_min:.3f}, media: {confianza_media:.3f}")
-        print(f"DEBUG NMS: Umbral dinámico: {umbral_dinamico:.3f}")
-        
-        detecciones_candidatas = [d for d in detecciones if d['confianza'] <= umbral_dinamico]
-        print(f"DEBUG NMS: Candidatas con umbral dinámico: {len(detecciones_candidatas)}")
-        
-        # Si no hay suficientes, tomar al menos las 3 mejores
-        if len(detecciones_candidatas) < 3:
-            detecciones_candidatas = sorted(detecciones, key=lambda x: x['confianza'])[:5]
-            print(f"DEBUG NMS: Tomando las 5 mejores por confianza: {len(detecciones_candidatas)}")
-    else:
-        # Para otros métodos: MEJORES = valores MÁS ALTOS
-        detecciones_candidatas = [d for d in detecciones if d['confianza'] >= 0.7]
+    # PASO 1: Filtro simple por umbral para CCOEFF_NORMED (valores altos = buenos)
+    detecciones_candidatas = [d for d in detecciones if d['confianza'] >= UMBRAL_FINAL_NMS]
+    
+    print(f"DEBUG NMS: Candidatas con confianza >= {UMBRAL_FINAL_NMS}: {len(detecciones_candidatas)}")
+    
+    # Si no hay suficientes, tomar las mejores disponibles
+    if len(detecciones_candidatas) < MINIMO_CANDIDATOS_NMS:
+        detecciones_candidatas = sorted(detecciones, key=lambda x: x['confianza'], reverse=True)[:MAXIMO_MEJORES_CANDIDATOS]
+        print(f"DEBUG NMS: Tomando las {MAXIMO_MEJORES_CANDIDATOS} mejores por confianza: {len(detecciones_candidatas)}")
     
     if not detecciones_candidatas:
-        print("DEBUG NMS: No hay candidatas válidas")
         return []
 
-    print(f"DEBUG NMS: {len(detecciones_candidatas)} candidatas válidas")
+    # PASO 2: Ordenar por confianza (valores más altos primero para CCOEFF_NORMED)
+    detecciones_ordenadas = sorted(detecciones_candidatas, key=lambda x: x['confianza'], reverse=True)
+    print(f"DEBUG NMS: Mejor confianza: {detecciones_ordenadas[0]['confianza']:.6f}")
 
-    # PASO 2: Ordenar por confianza CORRECTAMENTE
-    if METODO_MATCHING == cv2.TM_SQDIFF_NORMED:
-        # Para SQDIFF_NORMED: ordenar ASCENDENTE (valores más bajos = mejores)
-        detecciones_ordenadas = sorted(detecciones_candidatas, key=lambda x: x['confianza'])
-        print(f"DEBUG NMS: Mejor confianza después de ordenar: {detecciones_ordenadas[0]['confianza']:.6f}")
-    else:
-        # Para otros métodos: ordenar DESCENDENTE (valores más altos = mejores)
-        detecciones_ordenadas = sorted(detecciones_candidatas, key=lambda x: x['confianza'], reverse=True)
-
-    # PASO 3: Aplicar NMS
+    # PASO 3: NMS simple
     detecciones_finales = []
     
-    while detecciones_ordenadas and len(detecciones_finales) < 10:  # Limitar a 10 max
+    while detecciones_ordenadas and len(detecciones_finales) < LIMITE_DETECCIONES_FINALES:
         mejor = detecciones_ordenadas.pop(0)
         detecciones_finales.append(mejor)
         
         # Filtrar detecciones solapantes
         detecciones_filtradas = []
         for det in detecciones_ordenadas:
-            # Calcular IoU
+            # Calcular IoU simple
             x1_min, y1_min = mejor['x'], mejor['y']
             x1_max, y1_max = mejor['x'] + mejor['ancho'], mejor['y'] + mejor['alto']
             
