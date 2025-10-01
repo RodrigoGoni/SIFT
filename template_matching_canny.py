@@ -13,9 +13,9 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 PATH_IMAGENES = 'TP3/images/'
 PATH_TEMPLATE = 'TP3/template/'
 METODO_MATCHING = cv2.TM_CCOEFF_NORMED
-ESCALA_MIN = 0.3
+ESCALA_MIN = 0.05
 ESCALA_MAX = 3.5
-PASO_ESCALA = 0.1
+PASO_ESCALA = 0.05
 UMBRAL_CANNY_MIN = 100
 UMBRAL_CANNY_MAX = 250
 FILTRAR_RUIDO = True
@@ -28,6 +28,7 @@ MAXIMO_MEJORES_CANDIDATOS = 10
 LIMITE_DETECCIONES_FINALES = 10
 DPI_FIGURA = 100
 CARPETA_RESULTADOS = 'resultados_canny'
+EARLY_STOPPING_ESCALAS = 3
 
 
 def cargar_template(ruta_template: str) -> np.ndarray:
@@ -164,7 +165,7 @@ def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
             if mejor_confianza_actual <= mejor_confianza_anterior:
                 escala_sin_mejora += 1
                 print(f"  Sin mejora: {escala_sin_mejora}/2")
-                if escala_sin_mejora >= 2:
+                if escala_sin_mejora >= EARLY_STOPPING_ESCALAS:
                     print(f"Early stopping: Sin mejora en {escala_sin_mejora} escalas consecutivas")
                     print(f"Última escala procesada: {escala:.1f}x")
                     break
@@ -418,7 +419,7 @@ def visualizar_comparacion_escalas(imagen_original: np.ndarray,
 
 def obtener_imagenes_objetivo() -> List[str]:
     """Obtiene la lista de imágenes que contienen 'logo' o 'retro' en el nombre."""
-    patrones = ['*logo*', '*retro*', '*LOGO*']
+    patrones = ['*logo*', '*retro*', '*LOGO*']#, '*multi*']
     imagenes = []
 
     for patron in patrones:
