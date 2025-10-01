@@ -1,9 +1,9 @@
 import cv2
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 import glob
 import warnings
+import numpy as np
+import matplotlib.pyplot as plt
 from typing import List, Tuple, Dict
 from tqdm import tqdm
 
@@ -13,9 +13,9 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 PATH_IMAGENES = 'TP3/images/'
 PATH_TEMPLATE = 'TP3/template/'
 METODO_MATCHING = cv2.TM_CCOEFF_NORMED
-ESCALA_MIN = 0.4
-ESCALA_MAX = 2
-PASO_ESCALA = 0.4
+ESCALA_MIN = 0.3
+ESCALA_MAX = 3.5
+PASO_ESCALA = 0.1
 UMBRAL_CANNY_MIN = 100
 UMBRAL_CANNY_MAX = 250
 FILTRAR_RUIDO = True
@@ -24,16 +24,13 @@ SIGMA_GAUSSIANO = 1.5
 UMBRAL_SIMPLE_DETECCION = 0.04
 UMBRAL_FINAL_NMS = 0.04
 UMBRAL_IOU_NMS = 0.04
-TAMAÑO_MINIMO_TEMPLATE = 15
-MINIMO_CANDIDATOS_NMS = 3
 MAXIMO_MEJORES_CANDIDATOS = 10
 LIMITE_DETECCIONES_FINALES = 10
 DPI_FIGURA = 100
 CARPETA_RESULTADOS = 'resultados_canny'
-MOSTRAR_PROGRESO = True
 
 
-def cargar_template(ruta_template: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def cargar_template(ruta_template: str) -> np.ndarray:
     """Carga y preprocesa el template usando método Canny."""
     template_original = cv2.imread(ruta_template, cv2.IMREAD_GRAYSCALE)
     if template_original is None:
@@ -45,10 +42,8 @@ def cargar_template(ruta_template: str) -> Tuple[np.ndarray, np.ndarray, np.ndar
         template_filtrado = template_original
     
     template_procesado = cv2.Canny(template_filtrado, UMBRAL_CANNY_MIN, UMBRAL_CANNY_MAX)
-    template_procesado_inv = 255 - template_procesado
-    mascara = (template_procesado > 0).astype(np.uint8) * 255
     
-    return template_procesado, template_procesado_inv, mascara
+    return template_procesado
 
 
 def preprocesar_imagen(ruta_imagen: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -67,36 +62,31 @@ def preprocesar_imagen(ruta_imagen: str) -> Tuple[np.ndarray, np.ndarray]:
     return imagen_original, imagen_procesada
 
 
-def redimensionar_template_y_mascara(template: np.ndarray, mascara: np.ndarray, escala: float) -> Tuple[np.ndarray, np.ndarray]:
-    """Redimensiona tanto el template como su máscara correspondiente."""
+def redimensionar_template(template: np.ndarray, escala: float) -> np.ndarray:
+    """Redimensiona el template."""
     nuevo_ancho = max(1, int(template.shape[1] * escala))
     nuevo_alto = max(1, int(template.shape[0] * escala))
 
     try:
         template_redimensionado = cv2.resize(template, (nuevo_ancho, nuevo_alto))
-        mascara_redimensionada = cv2.resize(mascara, (nuevo_ancho, nuevo_alto))
-        return template_redimensionado, mascara_redimensionada
+        return template_redimensionado
     except Exception:
-        return None, None
+        return None
 
 
 def procesar_escala_individual(args):
     """Procesa una escala individual para template matching."""
-    (escala, imagen_procesada, template_procesado, template_procesado_inv, 
-     mascara, metodo_matching, umbral_simple) = args
+    (escala, imagen_procesada, template_procesado, 
+     metodo_matching, umbral_simple) = args
     
     detecciones_escala = []
     mapas_escala = []
     
-    template_escalado, mascara_escalada = redimensionar_template_y_mascara(template_procesado, mascara, escala)
+    template_escalado = redimensionar_template(template_procesado, escala)
 
     if template_escalado is None:
-        return detecciones_escala, mapas_escala
-
-    if (template_escalado.shape[0] > imagen_procesada.shape[0] or
-            template_escalado.shape[1] > imagen_procesada.shape[1]):
-        mapa_sintetico = np.array([[1.0]], dtype=np.float32)
-        mapas_escala.append((mapa_sintetico, escala, "directo"))
+        mapa_error = np.ones((1, 1), dtype=np.float32) * 999.0
+        mapas_escala.append((mapa_error, escala, "error_redimension"))
         return detecciones_escala, mapas_escala
 
     try:
@@ -116,47 +106,78 @@ def procesar_escala_individual(args):
                 'ancho': template_escalado.shape[1],
                 'alto': template_escalado.shape[0],
                 'confianza': confianza,
-                'escala': escala,
-                'version': 'directo',
-                'tipo_correlacion': 'umbral_simple'
+                'escala': escala
             })
 
     except Exception:
         mapa_error = np.ones((1, 1), dtype=np.float32) * 999.0
-        mapas_escala.append((mapa_error, escala, "directo"))
+        mapas_escala.append((mapa_error, escala, "error_matching"))
     
     return detecciones_escala, mapas_escala
 
 
 def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
-                                     template_procesado: np.ndarray,
-                                     template_procesado_inv: np.ndarray,
-                                     mascara: np.ndarray) -> Tuple[List[Dict], List[Tuple]]:
-    """Realiza búsqueda de template en múltiples escalas."""
+                                     template_procesado: np.ndarray) -> Tuple[List[Dict], List[Tuple]]:
+    """Realiza búsqueda de template en múltiples escalas con early stopping."""
     detecciones = []
     mapas_resultado = []
 
-    escalas = np.arange(ESCALA_MIN, ESCALA_MAX + PASO_ESCALA, PASO_ESCALA)
-    escalas_validas = []
+    # Generar escalas de mayor a menor para early stopping
+    escalas = np.arange(ESCALA_MAX, ESCALA_MIN - PASO_ESCALA, -PASO_ESCALA)
     
-    for escala in escalas:
+    mejor_confianza_anterior = -1.0
+    escala_sin_mejora = 0
+    escalas_procesadas = 0
+    
+    for escala in tqdm(escalas, desc="Procesando escalas", unit="escala"):
+        # Verificar si el template escalado es más grande que la imagen
         nuevo_ancho = int(template_procesado.shape[1] * escala)
         nuevo_alto = int(template_procesado.shape[0] * escala)
         
-        if nuevo_ancho >= TAMAÑO_MINIMO_TEMPLATE and nuevo_alto >= TAMAÑO_MINIMO_TEMPLATE:
-            escalas_validas.append(escala)
-    
-    escalas_iter = tqdm(escalas_validas, desc="Procesando escalas", unit="escala") if MOSTRAR_PROGRESO else escalas_validas
-    
-    for escala in escalas_iter:
+        if (nuevo_ancho > imagen_procesada.shape[1] or nuevo_alto > imagen_procesada.shape[0]):
+            # Agregar mapa sintético pero no contar para early stopping
+            mapa_sintetico = np.array([[1.0]], dtype=np.float32)
+            mapas_resultado.append((mapa_sintetico, escala, "error_tamaño"))
+            continue
+        
         detecciones_escala, mapas_escala = procesar_escala_individual(
             (escala, imagen_procesada, template_procesado, 
-             template_procesado_inv, mascara, METODO_MATCHING, UMBRAL_SIMPLE_DETECCION)
+             METODO_MATCHING, UMBRAL_SIMPLE_DETECCION)
         )
+        
         detecciones.extend(detecciones_escala)
         mapas_resultado.extend(mapas_escala)
+        escalas_procesadas += 1
+        
+        # Obtener la mejor confianza de esta escala (del mapa de correlación, no de las detecciones filtradas)
+        mejor_confianza_actual = -1.0
+        if mapas_escala and len(mapas_escala) > 0:
+            # Obtener el mapa de correlación (primer elemento del primer mapa)
+            mapa_correlacion = mapas_escala[0][0]
+            if mapa_correlacion.size > 1:  # No es un mapa de error
+                mejor_confianza_actual = float(mapa_correlacion.max())
+        
+        print(f"Escala {escala:.1f}x: Confianza max = {mejor_confianza_actual:.4f}")
+        
+        # Verificar early stopping (solo después de procesar al menos 1 escala)
+        if escalas_procesadas > 1:
+            if mejor_confianza_actual <= mejor_confianza_anterior:
+                escala_sin_mejora += 1
+                print(f"  Sin mejora: {escala_sin_mejora}/2")
+                if escala_sin_mejora >= 2:
+                    print(f"Early stopping: Sin mejora en {escala_sin_mejora} escalas consecutivas")
+                    print(f"Última escala procesada: {escala:.1f}x")
+                    break
+            else:
+                escala_sin_mejora = 0  # Reset contador si hay mejora
+                print(f"  ¡Mejora detectada! Reset contador")
+        
+        mejor_confianza_anterior = mejor_confianza_actual
 
+    # Ordenar mapas por escala (de menor a mayor para visualización)
     mapas_resultado.sort(key=lambda x: x[1])
+    
+    print(f"Escalas procesadas: {escalas_procesadas} de {len(escalas)} totales")
     
     return detecciones, mapas_resultado
 
@@ -166,16 +187,12 @@ def aplicar_nms(detecciones: List[Dict]) -> List[Dict]:
     if not detecciones:
         return []
     
+    # Filtrar por umbral y ordenar por confianza
     detecciones_candidatas = [d for d in detecciones if d['confianza'] >= UMBRAL_FINAL_NMS]
-    
-    if len(detecciones_candidatas) < MINIMO_CANDIDATOS_NMS:
+    if not detecciones_candidatas:
         detecciones_candidatas = sorted(detecciones, key=lambda x: x['confianza'], reverse=True)[:MAXIMO_MEJORES_CANDIDATOS]
     
-    if not detecciones_candidatas:
-        return []
-
     detecciones_ordenadas = sorted(detecciones_candidatas, key=lambda x: x['confianza'], reverse=True)
-
     detecciones_finales = []
     
     while detecciones_ordenadas and len(detecciones_finales) < LIMITE_DETECCIONES_FINALES:
@@ -208,9 +225,6 @@ def aplicar_nms(detecciones: List[Dict]) -> List[Dict]:
     return detecciones_finales
 
 def visualizar_preprocesamiento(template_procesado: np.ndarray,
-                                template_procesado_inv: np.ndarray,
-                                mascara: np.ndarray,
-                                imagen_original: np.ndarray,
                                 imagen_procesada: np.ndarray,
                                 nombre_imagen: str):
     """Visualiza las entradas al algoritmo de matching."""
@@ -275,13 +289,7 @@ def visualizar_mapas_coincidencias(mapas_resultado: List[Tuple], nombre_imagen: 
     fig.suptitle(f'MAPAS DE MATCHING - {nombre_imagen}', fontsize=16, weight='bold')
 
     for i in range(min(len(mapas_resultado), num_mapas)):
-        mapa_data = mapas_resultado[i]
-        if len(mapa_data) == 3:
-            mapa, escala, version = mapa_data
-        else:
-            mapa, escala = mapa_data
-            version = "directo"
-        
+        mapa, escala = mapas_resultado[i][:2]
         ax = axes[i]
         
         if mapa.shape == (1, 1) and mapa[0, 0] > 900:
@@ -306,7 +314,6 @@ def visualizar_mapas_coincidencias(mapas_resultado: List[Tuple], nombre_imagen: 
 
 
 def visualizar_resultado_final(imagen_original: np.ndarray,
-                               detecciones_antes_nms: List[Dict],
                                detecciones_despues_nms: List[Dict],
                                nombre_imagen: str):
     """Visualiza la mejor detección del NMS."""
@@ -373,13 +380,7 @@ def visualizar_comparacion_escalas(imagen_original: np.ndarray,
     fig.suptitle(f'COMPARACIÓN DE ESCALAS - {nombre_imagen}', fontsize=16, weight='bold')
     
     for i in range(num_escalas):
-        mapa_data = mapas_ordenados[i]
-        if len(mapa_data) == 3:
-            mapa, escala, version = mapa_data
-        else:
-            mapa, escala = mapa_data
-            version = "directo"
-        
+        mapa, escala = mapas_ordenados[i][:2]
         ax = axes[i]
         ax.imshow(imagen_original, cmap='gray', alpha=0.7)
         
@@ -428,10 +429,10 @@ def obtener_imagenes_objetivo() -> List[str]:
     return imagenes
 
 
-def procesar_imagen(ruta_imagen: str, template_data: Tuple):
+def procesar_imagen(ruta_imagen: str, template_data: np.ndarray):
     """Procesa una sola imagen con el template."""
     nombre_imagen = os.path.basename(ruta_imagen)
-    template_procesado, template_procesado_inv, mascara = template_data
+    template_procesado = template_data
 
     ruta_template = os.path.join(PATH_TEMPLATE, 'pattern.png')
     template_original = cv2.imread(ruta_template, cv2.IMREAD_GRAYSCALE)
@@ -439,12 +440,11 @@ def procesar_imagen(ruta_imagen: str, template_data: Tuple):
     imagen_original, imagen_procesada = preprocesar_imagen(ruta_imagen)
 
     visualizar_preprocesamiento(
-        template_procesado, template_procesado_inv, mascara,
-        imagen_original, imagen_procesada, nombre_imagen
+        template_procesado, imagen_procesada, nombre_imagen
     )
 
     detecciones, mapas_resultado = buscar_coincidencias_multiescala(
-        imagen_procesada, template_procesado, template_procesado_inv, mascara
+        imagen_procesada, template_procesado
     )
 
     visualizar_mapas_coincidencias(mapas_resultado, nombre_imagen)
@@ -452,7 +452,7 @@ def procesar_imagen(ruta_imagen: str, template_data: Tuple):
     detecciones_filtradas = aplicar_nms(detecciones)
 
     visualizar_resultado_final(
-        imagen_original, detecciones, detecciones_filtradas, nombre_imagen
+        imagen_original, detecciones_filtradas, nombre_imagen
     )
 
     visualizar_comparacion_escalas(
@@ -484,9 +484,7 @@ def main():
 
     resultados_totales = {}
     
-    imagenes_iter = tqdm(imagenes, desc="Procesando imágenes", unit="img") if MOSTRAR_PROGRESO else imagenes
-    
-    for ruta_imagen in imagenes_iter:
+    for ruta_imagen in tqdm(imagenes, desc="Procesando imágenes", unit="img"):
         nombre_imagen = os.path.basename(ruta_imagen)
         detecciones = procesar_imagen(ruta_imagen, template_data)
         resultados_totales[nombre_imagen] = detecciones
