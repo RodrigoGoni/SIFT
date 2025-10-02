@@ -13,8 +13,8 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 PATH_IMAGENES = 'TP3/images/'
 PATH_TEMPLATE = 'TP3/template/'
 METODO_MATCHING = cv2.TM_CCOEFF_NORMED
-ESCALA_MIN = 0.05
-ESCALA_MAX = 3.5
+ESCALA_MIN = 0.4
+ESCALA_MAX = 3.0
 PASO_ESCALA = 0.05
 UMBRAL_CANNY_MIN = 100
 UMBRAL_CANNY_MAX = 250
@@ -225,6 +225,7 @@ def aplicar_nms(detecciones: List[Dict]) -> List[Dict]:
 
     return detecciones_finales
 
+
 def visualizar_preprocesamiento(template_procesado: np.ndarray,
                                 imagen_procesada: np.ndarray,
                                 nombre_imagen: str):
@@ -416,6 +417,7 @@ def visualizar_comparacion_escalas(imagen_original: np.ndarray,
     plt.savefig(f'{CARPETA_RESULTADOS}/{nombre_base}_04_comparacion_escalas.png',
                 bbox_inches='tight', dpi=DPI_FIGURA)
     plt.close()
+
 
 def obtener_imagenes_objetivo() -> List[str]:
     """Obtiene la lista de imágenes que contienen 'logo' o 'retro' en el nombre."""
