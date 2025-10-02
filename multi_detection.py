@@ -1,18 +1,15 @@
-#!/usr/bin/env python3
-"""Template Matching - Detección Múltiple"""
-
 import os
 import sys
 from tqdm import tqdm
 
-from template_matching_lib.config import ConfigMulti, ConfigGeneral, crear_config_dict
+from template_matching_lib.config import crear_config_dict
 from template_matching_lib.preprocessing import cargar_template
-from template_matching_lib.utils import obtener_todas_las_imagenes, procesar_imagen_multi, crear_directorio_resultados
+from template_matching_lib.utils import obtener_imagenes, procesar_imagen_multi, crear_directorio_resultados
 
 
 def procesar_coca_multi():
     """Función para procesar específicamente la imagen coca_multi.png."""
-    config = crear_config_dict(ConfigMulti)
+    config = crear_config_dict('multi')
     crear_directorio_resultados(config)
 
     template_data = cargar_template(f"{config['PATH_TEMPLATE']}pattern.png", config)
@@ -28,11 +25,11 @@ def procesar_coca_multi():
 
 def test_algoritmo_todas_imagenes():
     """Función para testar el algoritmo en todas las imágenes del directorio."""
-    config = crear_config_dict(ConfigGeneral)
+    config = crear_config_dict('general')
     crear_directorio_resultados(config)
 
     template_data = cargar_template(f"{config['PATH_TEMPLATE']}pattern.png", config)
-    imagenes = obtener_todas_las_imagenes(config, excluir_multi=True)
+    imagenes = obtener_imagenes(config=config, excluir_multi=True)
     
     if not imagenes:
         print(f"ERROR: No se encontraron imágenes válidas en {config['PATH_IMAGENES']}")

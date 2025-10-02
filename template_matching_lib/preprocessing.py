@@ -6,13 +6,6 @@ from typing import Tuple, Dict, Any
 def cargar_template(ruta_template: str, config: Dict[str, Any]) -> np.ndarray:
     """
     Carga y preprocesa el template usando método Canny.
-    
-    Args:
-        ruta_template: Ruta al archivo del template
-        config: Diccionario de configuración
-    
-    Returns:
-        Template procesado con Canny
     """
     template_original = cv2.imread(ruta_template, cv2.IMREAD_GRAYSCALE)
     if template_original is None:
@@ -46,13 +39,6 @@ def cargar_template(ruta_template: str, config: Dict[str, Any]) -> np.ndarray:
 def preprocesar_imagen(ruta_imagen: str, config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
     """
     Preprocesa una imagen usando el método Canny.
-    
-    Args:
-        ruta_imagen: Ruta al archivo de la imagen
-        config: Diccionario de configuración
-    
-    Returns:
-        Tupla (imagen_original, imagen_procesada)
     """
     imagen_original = cv2.imread(ruta_imagen, cv2.IMREAD_GRAYSCALE)
     if imagen_original is None:
@@ -86,13 +72,6 @@ def preprocesar_imagen(ruta_imagen: str, config: Dict[str, Any]) -> Tuple[np.nda
 def redimensionar_template(template: np.ndarray, escala: float) -> np.ndarray:
     """
     Redimensiona el template a una escala específica.
-    
-    Args:
-        template: Template a redimensionar
-        escala: Factor de escala
-    
-    Returns:
-        Template redimensionado o None si hay error
     """
     nuevo_ancho = max(1, int(template.shape[1] * escala))
     nuevo_alto = max(1, int(template.shape[0] * escala))
@@ -107,14 +86,6 @@ def redimensionar_template(template: np.ndarray, escala: float) -> np.ndarray:
 def validar_dimensiones_template(template: np.ndarray, imagen: np.ndarray, escala: float) -> bool:
     """
     Valida si el template escalado cabe en la imagen.
-    
-    Args:
-        template: Template original
-        imagen: Imagen de destino
-        escala: Factor de escala
-    
-    Returns:
-        True si el template escalado cabe en la imagen
     """
     nuevo_ancho = int(template.shape[1] * escala)
     nuevo_alto = int(template.shape[0] * escala)
@@ -125,13 +96,6 @@ def validar_dimensiones_template(template: np.ndarray, imagen: np.ndarray, escal
 def obtener_dimensiones_escaladas(template: np.ndarray, escala: float) -> Tuple[int, int]:
     """
     Obtiene las dimensiones del template escalado.
-    
-    Args:
-        template: Template original
-        escala: Factor de escala
-    
-    Returns:
-        Tupla (nuevo_ancho, nuevo_alto)
     """
     nuevo_ancho = max(1, int(template.shape[1] * escala))
     nuevo_alto = max(1, int(template.shape[0] * escala))

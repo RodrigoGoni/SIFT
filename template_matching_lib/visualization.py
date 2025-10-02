@@ -1,10 +1,3 @@
-"""
-Módulo de visualización para Template Matching
-==============================================
-
-Contiene todas las funciones de visualización y generación de gráficos.
-"""
-
 import os
 import cv2
 import numpy as np
@@ -19,12 +12,6 @@ def visualizar_preprocesamiento(template_procesado: np.ndarray,
                                 config: Dict[str, Any]):
     """
     Visualiza las entradas al algoritmo de matching.
-    
-    Args:
-        template_procesado: Template procesado
-        imagen_procesada: Imagen procesada
-        nombre_imagen: Nombre de la imagen
-        config: Diccionario de configuración
     """
     os.makedirs(config['CARPETA_RESULTADOS'], exist_ok=True)
     nombre_base = os.path.splitext(nombre_imagen)[0]
@@ -53,11 +40,6 @@ def visualizar_mapas_coincidencias(mapas_resultado: List[Tuple],
                                   config: Dict[str, Any]):
     """
     Visualiza mapas de matching en un único plot.
-    
-    Args:
-        mapas_resultado: Lista de mapas de correlación
-        nombre_imagen: Nombre de la imagen
-        config: Diccionario de configuración
     """
     nombre_base = os.path.splitext(nombre_imagen)[0]
     
@@ -148,12 +130,6 @@ def visualizar_resultado_final(imagen_original: np.ndarray,
                               config: Dict[str, Any]):
     """
     Visualiza la mejor detección del NMS (versión single detection).
-    
-    Args:
-        imagen_original: Imagen original
-        detecciones_despues_nms: Detecciones después del NMS
-        nombre_imagen: Nombre de la imagen
-        config: Diccionario de configuración
     """
     nombre_base = os.path.splitext(nombre_imagen)[0]
     
@@ -192,13 +168,6 @@ def visualizar_comparacion_escalas(imagen_original: np.ndarray,
                                  config: Dict[str, Any]):
     """
     Visualiza el template escalado superpuesto en la imagen.
-    
-    Args:
-        imagen_original: Imagen original
-        template_original: Template original
-        mapas_resultado: Lista de mapas de correlación
-        nombre_imagen: Nombre de la imagen
-        config: Diccionario de configuración
     """
     if not mapas_resultado:
         return
@@ -289,13 +258,6 @@ def visualizar_todas_las_detecciones(imagen_original: np.ndarray,
                                     config: Dict[str, Any]):
     """
     Visualiza todas las detecciones antes y después del NMS.
-    
-    Args:
-        imagen_original: Imagen original
-        detecciones_antes_nms: Detecciones antes del NMS
-        detecciones_despues_nms: Detecciones después del NMS
-        nombre_imagen: Nombre de la imagen
-        config: Diccionario de configuración
     """
     nombre_base = os.path.splitext(nombre_imagen)[0]
     
@@ -358,12 +320,7 @@ def visualizar_detecciones_finales_numeradas(imagen_original: np.ndarray,
                                            config: Dict[str, Any]):
     """
     Visualiza las detecciones finales con numeración clara.
-    
-    Args:
-        imagen_original: Imagen original
-        detecciones_despues_nms: Detecciones después del NMS
-        nombre_imagen: Nombre de la imagen
-        config: Diccionario de configuración
+
     """
     nombre_base = os.path.splitext(nombre_imagen)[0]
     

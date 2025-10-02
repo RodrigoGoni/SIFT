@@ -6,13 +6,6 @@ from sklearn.cluster import DBSCAN
 def calcular_iou(det1: Dict, det2: Dict) -> float:
     """
     Calcula Intersection over Union entre dos detecciones.
-    
-    Args:
-        det1: Primera detección
-        det2: Segunda detección
-    
-    Returns:
-        Valor IoU entre 0 y 1
     """
     # Coordenadas de las cajas
     x1_min, y1_min = det1['x'], det1['y']
@@ -36,14 +29,8 @@ def calcular_iou(det1: Dict, det2: Dict) -> float:
 
 def aplicar_nms(detecciones: List[Dict], config: Dict[str, Any]) -> List[Dict]:
     """
-    Aplica Non-Maximum Suppression simplificado (versión single detection).
+    Aplica Non-Maximum Suppression simplificado.
     
-    Args:
-        detecciones: Lista de detecciones
-        config: Diccionario de configuración
-    
-    Returns:
-        Lista de detecciones filtradas
     """
     if not detecciones:
         return []
@@ -81,14 +68,6 @@ def aplicar_nms_por_escala(detecciones_escala: List[Dict],
                           umbral_iou: float = 0.2) -> List[Dict]:
     """
     Aplica NMS dentro de una escala específica para reducir redundancia.
-    
-    Args:
-        detecciones_escala: Detecciones de una escala específica
-        max_detecciones: Máximo número de detecciones a retornar
-        umbral_iou: Umbral IoU para NMS
-    
-    Returns:
-        Lista de detecciones filtradas
     """
     if not detecciones_escala:
         return []
@@ -110,12 +89,6 @@ def aplicar_nms_por_escala(detecciones_escala: List[Dict],
 def normalizar_detecciones_globalmente(detecciones: List[Dict]) -> List[Dict]:
     """
     Normaliza las confianzas de todas las detecciones de 0 a 1.
-    
-    Args:
-        detecciones: Lista de detecciones
-    
-    Returns:
-        Lista de detecciones con confianzas normalizadas
     """
     if not detecciones:
         return []
@@ -153,14 +126,6 @@ def agrupar_detecciones_por_clustering(detecciones: List[Dict],
                                       min_samples: int = 1) -> List[List[Dict]]:
     """
     Agrupa detecciones cercanas usando clustering DBSCAN.
-    
-    Args:
-        detecciones: Lista de detecciones
-        eps: Radio máximo para considerar puntos vecinos
-        min_samples: Número mínimo de muestras en un cluster
-    
-    Returns:
-        Lista de grupos de detecciones
     """
     if len(detecciones) < 2:
         return [detecciones] if detecciones else []
@@ -184,13 +149,6 @@ def agrupar_detecciones_por_clustering(detecciones: List[Dict],
 def aplicar_nms_multi_deteccion(detecciones: List[Dict], config: Dict[str, Any]) -> List[Dict]:
     """
     Aplica NMS optimizado para múltiples detecciones con normalización global.
-    
-    Args:
-        detecciones: Lista de detecciones
-        config: Diccionario de configuración
-    
-    Returns:
-        Lista de detecciones filtradas
     """
     if not detecciones:
         return []

@@ -1,15 +1,15 @@
 from tqdm import tqdm
-from template_matching_lib.config import ConfigSingle, crear_config_dict
+from template_matching_lib.config import crear_config_dict
 from template_matching_lib.preprocessing import cargar_template
-from template_matching_lib.utils import obtener_imagenes_objetivo, procesar_imagen, crear_directorio_resultados
+from template_matching_lib.utils import obtener_imagenes, procesar_imagen, crear_directorio_resultados
 
 
 def main():
-    config = crear_config_dict(ConfigSingle)
+    config = crear_config_dict('single')
     crear_directorio_resultados(config)
     
     template_data = cargar_template(f"{config['PATH_TEMPLATE']}pattern.png", config)
-    imagenes = obtener_imagenes_objetivo(config=config)
+    imagenes = obtener_imagenes(config=config)
     
     if not imagenes:
         print("No se encontraron imágenes para procesar.")

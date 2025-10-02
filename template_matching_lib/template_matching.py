@@ -4,17 +4,11 @@ from typing import List, Tuple, Dict, Any
 from tqdm import tqdm
 
 from .preprocessing import redimensionar_template, validar_dimensiones_template
-
+from .nms import aplicar_nms_por_escala
 
 def procesar_escala_individual(args) -> Tuple[List[Dict], List[Tuple]]:
     """
-    Procesa una escala individual para template matching (versión simple).
-    
-    Args:
-        args: Tupla con (escala, imagen_procesada, template_procesado, metodo_matching, umbral_simple)
-    
-    Returns:
-        Tupla (detecciones_escala, mapas_escala)
+    Procesa una escala individual para template matching.
     """
     escala, imagen_procesada, template_procesado, metodo_matching, umbral_simple = args
     
@@ -57,13 +51,7 @@ def procesar_escala_individual(args) -> Tuple[List[Dict], List[Tuple]]:
 
 def procesar_escala_individual_multi(args) -> Tuple[List[Dict], List[Tuple]]:
     """
-    Procesa una escala individual para template matching (versión múltiple detecciones).
-    
-    Args:
-        args: Tupla con (escala, imagen_procesada, template_procesado, metodo_matching, umbral_simple)
-    
-    Returns:
-        Tupla (detecciones_escala, mapas_escala)
+    Procesa una escala individual para template matching.
     """
     escala, imagen_procesada, template_procesado, metodo_matching, umbral_simple = args
     
@@ -80,13 +68,10 @@ def procesar_escala_individual_multi(args) -> Tuple[List[Dict], List[Tuple]]:
     try:
         resultado = cv2.matchTemplate(imagen_procesada, template_escalado, metodo_matching)
         
-        # No normalizar para permitir comparación entre escalas en early stopping
         mapas_escala.append((resultado, escala, "directo"))
 
-        # Usar umbral configurado directamente
         ubicaciones = np.where(resultado >= umbral_simple)
         
-        # Comprensión de lista más concisa para crear detecciones
         detecciones_escala = [
             {
                 'x': int(x), 'y': int(y),
@@ -163,16 +148,7 @@ def buscar_coincidencias_multiescala_multi(imagen_procesada: np.ndarray,
                                           config: Dict[str, Any]) -> Tuple[List[Dict], List[Tuple]]:
     """
     Realiza búsqueda de template en múltiples escalas optimizado para múltiples detecciones.
-    
-    Args:
-        imagen_procesada: Imagen preprocesada
-        template_procesado: Template preprocesado
-        config: Diccionario de configuración
-    
-    Returns:
-        Tupla (detecciones, mapas_resultado)
     """
-    from .nms import aplicar_nms_por_escala
     
     detecciones = []
     mapas_resultado = []

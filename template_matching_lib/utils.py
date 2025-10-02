@@ -16,61 +16,42 @@ from .visualization import (
 )
 
 
-def obtener_imagenes_objetivo(patron_imagenes: str = None, config: Dict[str, Any] = None) -> List[str]:
+def obtener_imagenes(patron_imagenes: str = None, config: Dict[str, Any] = None, excluir_multi: bool = True) -> List[str]:
     """
-    Obtiene la lista de imágenes que contienen ciertos patrones en el nombre.
-    
-    Args:
-        patron_imagenes: Patrón específico a buscar (opcional)
-        config: Diccionario de configuración
-    
-    Returns:
-        Lista de rutas de imágenes
+    Obtiene la lista de imágenes del directorio.
     """
     if config is None:
         config = {'PATH_IMAGENES': 'TP3/images/'}
     
-    if patron_imagenes:
-        patrones = [patron_imagenes]
-    else:
-        # Patrones por defecto para modo single
-        patrones = ['*logo*', '*retro*', '*LOGO*']
-    
-    imagenes = []
-    path_imagenes = config.get('PATH_IMAGENES', 'TP3/images/')
-
-    for patron in patrones:
-        imagenes.extend(glob.glob(os.path.join(path_imagenes, patron + '.png')))
-        imagenes.extend(glob.glob(os.path.join(path_imagenes, patron + '.jpg')))
-        imagenes.extend(glob.glob(os.path.join(path_imagenes, patron + '.jpeg')))
-
-    return imagenes
-
-
-def obtener_todas_las_imagenes(config: Dict[str, Any], excluir_multi: bool = False) -> List[str]:
-    """
-    Obtiene todas las imágenes válidas del directorio.
-    
-    Args:
-        config: Diccionario de configuración
-        excluir_multi: Si True, excluye coca_multi.png de la lista
-    
-    Returns:
-        Lista de rutas de imágenes
-    """
     directorio_imagenes = config.get('PATH_IMAGENES', 'TP3/images/')
-    extensiones_validas = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff')
     
     if not os.path.exists(directorio_imagenes):
         return []
     
-    imagenes = [
-        os.path.join(directorio_imagenes, f) 
-        for f in os.listdir(directorio_imagenes) 
-        if f.lower().endswith(extensiones_validas)
-    ]
+    imagenes = []
     
-    # Excluir coca_multi.png si se solicita (para tests generales)
+    if patron_imagenes:
+        # Buscar por patrón específico
+        patrones = [patron_imagenes]
+        for patron in patrones:
+            imagenes.extend(glob.glob(os.path.join(directorio_imagenes, patron + '.png')))
+    else:
+        # Si no hay patrón específico, usar patrones por defecto o todas las imágenes
+        patrones_por_defecto = ['*logo*', '*retro*', '*LOGO*']
+        
+        # Intentar con patrones por defecto primero
+        for patron in patrones_por_defecto:
+            imagenes.extend(glob.glob(os.path.join(directorio_imagenes, patron + '.png')))
+        
+        # Si no se encontraron imágenes con patrones, obtener todas las .png
+        if not imagenes:
+            imagenes = [
+                os.path.join(directorio_imagenes, f) 
+                for f in os.listdir(directorio_imagenes) 
+                if f.lower().endswith('.png')
+            ]
+    
+    # Excluir imágenes multi si se especifica
     if excluir_multi:
         imagenes = [img for img in imagenes if not os.path.basename(img).lower().startswith('coca_multi')]
     
@@ -78,7 +59,7 @@ def obtener_todas_las_imagenes(config: Dict[str, Any], excluir_multi: bool = Fal
 
 
 def procesar_imagen(ruta_imagen: str, template_data: Any, config: Dict[str, Any]) -> List[Dict]:
-    """Procesa una sola imagen con el template (versión single detection)."""
+    """Procesa una sola imagen con el template."""
     nombre_imagen = os.path.basename(ruta_imagen)
     template_procesado = template_data
 
