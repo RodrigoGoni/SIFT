@@ -1,10 +1,3 @@
-"""
-Módulo de Non-Maximum Suppression (NMS) y filtrado
-==================================================
-
-Contiene funciones para filtrar y agrupar detecciones usando NMS, clustering y normalización.
-"""
-
 import numpy as np
 from typing import List, Dict, Any
 from sklearn.cluster import DBSCAN
@@ -137,14 +130,11 @@ def normalizar_detecciones_globalmente(detecciones: List[Dict]) -> List[Dict]:
     confianza_min = min(confianzas)
     confianza_max = max(confianzas)
     
-    print(f"Normalización global: min={confianza_min:.4f}, max={confianza_max:.4f}")
-    
     # Evitar división por cero
     if confianza_max == confianza_min:
         for det in detecciones:
             det['confianza_original'] = det['confianza']
             det['confianza'] = 0.5
-        print("Todas las confianzas son iguales, asignando 0.5 a todas")
         return detecciones
     
     # Normalizar cada detección
@@ -154,8 +144,6 @@ def normalizar_detecciones_globalmente(detecciones: List[Dict]) -> List[Dict]:
         det_normalizada['confianza_original'] = det['confianza']
         det_normalizada['confianza'] = (det['confianza'] - confianza_min) / (confianza_max - confianza_min)
         detecciones_normalizadas.append(det_normalizada)
-    
-    print(f"Detecciones normalizadas: {len(detecciones_normalizadas)}")
     
     return detecciones_normalizadas
 
@@ -190,8 +178,6 @@ def agrupar_detecciones_por_clustering(detecciones: List[Dict],
         clusters.setdefault(etiqueta, []).append(detecciones[i])
     
     grupos = list(clusters.values())
-    print(f"Clustering: {len(detecciones)} detecciones agrupadas en {len(grupos)} clusters")
-    
     return grupos
 
 
@@ -209,8 +195,6 @@ def aplicar_nms_multi_deteccion(detecciones: List[Dict], config: Dict[str, Any])
     if not detecciones:
         return []
     
-    print(f"Detecciones antes del filtrado: {len(detecciones)}")
-    
     # PASO 1: Normalizar todas las detecciones globalmente
     detecciones_normalizadas = normalizar_detecciones_globalmente(detecciones)
     
@@ -219,12 +203,8 @@ def aplicar_nms_multi_deteccion(detecciones: List[Dict], config: Dict[str, Any])
     detecciones_candidatas = [d for d in detecciones_normalizadas if d['confianza'] >= umbral_normalizado]
     
     if not detecciones_candidatas:
-        # Si no hay suficientes con el umbral, tomar las mejores
         max_candidatos = config.get('MAX_CANDIDATOS', 50)
         detecciones_candidatas = sorted(detecciones_normalizadas, key=lambda x: x['confianza'], reverse=True)[:max_candidatos]
-        print(f"No hay detecciones sobre el umbral {umbral_normalizado}, tomando las {len(detecciones_candidatas)} mejores")
-    
-    print(f"NMS entre escalas: {len(detecciones_candidatas)} candidatos después del filtrado por confianza normalizada (umbral: {umbral_normalizado})")
     
     # PASO 3: Aplicar NMS entre escalas diferentes
     detecciones_candidatas_ordenadas = sorted(detecciones_candidatas, key=lambda x: x['confianza'], reverse=True)
@@ -234,8 +214,6 @@ def aplicar_nms_multi_deteccion(detecciones: List[Dict], config: Dict[str, Any])
     for deteccion in detecciones_candidatas_ordenadas:
         if not any(calcular_iou(deteccion, det) > umbral_iou for det in detecciones_inter_escala):
             detecciones_inter_escala.append(deteccion)
-    
-    print(f"NMS entre escalas: {len(detecciones_inter_escala)} candidatos después de filtrar solapamientos")
     
     # PASO 4: Agrupar detecciones restantes por clustering espacial
     clustering_eps = config.get('CLUSTERING_EPS', 15)
@@ -251,7 +229,6 @@ def aplicar_nms_multi_deteccion(detecciones: List[Dict], config: Dict[str, Any])
     # PASO 5: Aplicar NMS refinado dentro de cada grupo
     max_por_grupo = config.get('MAX_DETECCIONES_POR_GRUPO', 8)
     for i, grupo in enumerate(grupos_detecciones):
-        print(f"Procesando grupo {i+1}: {len(grupo)} detecciones")
         
         grupo_ordenado = sorted(grupo, key=lambda x: x['confianza'], reverse=True)
         detecciones_grupo = []
@@ -269,7 +246,5 @@ def aplicar_nms_multi_deteccion(detecciones: List[Dict], config: Dict[str, Any])
     # PASO 6: Ordenar y limitar resultado final
     limite_final = config.get('LIMITE_FINAL', 50)
     detecciones_finales = sorted(detecciones_finales, key=lambda x: x['confianza'], reverse=True)[:limite_final]
-    
-    print(f"NMS final: {len(detecciones_finales)} detecciones seleccionadas")
     
     return detecciones_finales

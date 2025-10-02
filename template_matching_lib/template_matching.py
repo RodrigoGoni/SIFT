@@ -1,10 +1,3 @@
-"""
-Módulo de Template Matching
-============================
-
-Contiene las funciones principales para realizar template matching multiescala.
-"""
-
 import cv2
 import numpy as np
 from typing import List, Tuple, Dict, Any
@@ -116,21 +109,10 @@ def procesar_escala_individual_multi(args) -> Tuple[List[Dict], List[Tuple]]:
 def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
                                     template_procesado: np.ndarray,
                                     config: Dict[str, Any]) -> Tuple[List[Dict], List[Tuple]]:
-    """
-    Realiza búsqueda de template en múltiples escalas con early stopping (versión simple).
-    
-    Args:
-        imagen_procesada: Imagen preprocesada
-        template_procesado: Template preprocesado
-        config: Diccionario de configuración
-    
-    Returns:
-        Tupla (detecciones, mapas_resultado)
-    """
+    """Realiza búsqueda de template en múltiples escalas con early stopping."""
     detecciones = []
     mapas_resultado = []
 
-    # Generar escalas de mayor a menor para early stopping
     escalas = np.arange(config['ESCALA_MAX'], 
                        config['ESCALA_MIN'] - config['PASO_ESCALA'], 
                        -config['PASO_ESCALA'])
@@ -139,10 +121,8 @@ def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
     escala_sin_mejora = 0
     escalas_procesadas = 0
     
-    for escala in tqdm(escalas, desc="Procesando escalas", unit="escala"):
-        # Verificar si el template escalado es más grande que la imagen
+    for escala in tqdm(escalas, desc="Procesando escalas"):
         if not validar_dimensiones_template(template_procesado, imagen_procesada, escala):
-            # Agregar mapa sintético pero no contar para early stopping
             mapa_sintetico = np.array([[1.0]], dtype=np.float32)
             mapas_resultado.append((mapa_sintetico, escala, "error_tamaño"))
             continue
@@ -157,35 +137,24 @@ def buscar_coincidencias_multiescala(imagen_procesada: np.ndarray,
         mapas_resultado.extend(mapas_escala)
         escalas_procesadas += 1
         
-        # Obtener la mejor confianza de esta escala
+        # Early stopping
         mejor_confianza_actual = -1.0
         if mapas_escala and len(mapas_escala) > 0:
             mapa_correlacion = mapas_escala[0][0]
-            if mapa_correlacion.size > 1:  # No es un mapa de error
+            if mapa_correlacion.size > 1:
                 mejor_confianza_actual = float(mapa_correlacion.max())
         
-        print(f"Escala {escala:.1f}x: Confianza max = {mejor_confianza_actual:.4f}")
-        
-        # Verificar early stopping
         if escalas_procesadas > 1:
             if mejor_confianza_actual <= mejor_confianza_anterior:
                 escala_sin_mejora += 1
-                print(f"  Sin mejora: {escala_sin_mejora}/{config['EARLY_STOPPING_ESCALAS']}")
                 if escala_sin_mejora >= config['EARLY_STOPPING_ESCALAS']:
-                    print(f"Early stopping: Sin mejora en {escala_sin_mejora} escalas consecutivas")
-                    print(f"Última escala procesada: {escala:.1f}x")
                     break
             else:
                 escala_sin_mejora = 0
-                print(f"  ¡Mejora detectada! Reset contador")
         
         mejor_confianza_anterior = mejor_confianza_actual
 
-    # Ordenar mapas por escala
     mapas_resultado.sort(key=lambda x: x[1])
-    
-    print(f"Escalas procesadas: {escalas_procesadas} de {len(escalas)} totales")
-    
     return detecciones, mapas_resultado
 
 
@@ -218,12 +187,9 @@ def buscar_coincidencias_multiescala_multi(imagen_procesada: np.ndarray,
     escala_sin_mejora = 0
     escalas_procesadas = 0
     
-    for escala in tqdm(escalas, desc="Procesando escalas", unit="escala"):
-        # Verificar si el template escalado es más grande que la imagen
+    for escala in tqdm(escalas, desc="Procesando escalas"):
         if not validar_dimensiones_template(template_procesado, imagen_procesada, escala):
             mapas_resultado.append((np.array([[1.0]], dtype=np.float32), escala, "error_tamaño"))
-            nuevo_ancho, nuevo_alto = int(template_procesado.shape[1] * escala), int(template_procesado.shape[0] * escala)
-            print(f"Escala {escala:.2f}x: Template demasiado grande ({nuevo_ancho}x{nuevo_alto}), saltando")
             continue
         
         detecciones_escala, mapas_escala = procesar_escala_individual_multi(
@@ -242,41 +208,23 @@ def buscar_coincidencias_multiescala_multi(imagen_procesada: np.ndarray,
         mapas_resultado.extend(mapas_escala)
         escalas_procesadas += 1
         
-        # Obtener la mejor confianza de esta escala
+        # Early stopping
         mejor_confianza_actual = -1.0
         if mapas_escala and len(mapas_escala) > 0:
             mapa_correlacion = mapas_escala[0][0]
             if mapa_correlacion.size > 1:
                 mejor_confianza_actual = float(mapa_correlacion.max())
         
-        print(f"Escala {escala:.2f}x: Confianza max = {mejor_confianza_actual:.4f}, "
-              f"{len(detecciones_escala)} → {len(detecciones_escala_filtradas)} detecciones (NMS)")
-        
-        # Verificar early stopping - lógica igual al archivo original
         if escalas_procesadas > 1:
-            print(f"  Comparando: actual={mejor_confianza_actual:.4f} vs mejor_global={mejor_confianza_global:.4f}")
-            
-            # Actualizar el mejor global si es necesario
             if mejor_confianza_actual > mejor_confianza_global:
                 mejor_confianza_global = mejor_confianza_actual
-                escala_sin_mejora = 0  # Reset contador si hay nueva mejor
-                print(f"  ¡Nuevo máximo global! Reset contador")
+                escala_sin_mejora = 0
             else:
                 escala_sin_mejora += 1
-                print(f"  Sin mejora global: {escala_sin_mejora}/{config['EARLY_STOPPING_ESCALAS']}")
                 if escala_sin_mejora >= config['EARLY_STOPPING_ESCALAS']:
-                    print(f"Early stopping: Sin mejora global en {escala_sin_mejora} escalas consecutivas")
-                    print(f"Mejor confianza global: {mejor_confianza_global:.4f}")
-                    print(f"Última escala procesada: {escala:.2f}x")
                     break
         else:
-            # Primera escala procesada
             mejor_confianza_global = mejor_confianza_actual
 
-    # Ordenar mapas por escala
     mapas_resultado.sort(key=lambda x: x[1])
-    
-    print(f"Escalas procesadas: {escalas_procesadas} de {len(escalas)} totales")
-    print(f"Total de detecciones después del NMS por escala: {len(detecciones)}")
-    
     return detecciones, mapas_resultado

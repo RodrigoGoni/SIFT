@@ -1,16 +1,9 @@
-"""
-Módulo de utilidades para Template Matching
-===========================================
-
-Contiene funciones utilitarias y de procesamiento de alto nivel.
-"""
-
 import os
 import glob
 import cv2
 from typing import List, Dict, Any
 
-from .preprocessing import cargar_template, preprocesar_imagen
+from .preprocessing import preprocesar_imagen
 from .template_matching import buscar_coincidencias_multiescala, buscar_coincidencias_multiescala_multi
 from .nms import aplicar_nms, aplicar_nms_multi_deteccion
 from .visualization import (
@@ -85,17 +78,7 @@ def obtener_todas_las_imagenes(config: Dict[str, Any], excluir_multi: bool = Fal
 
 
 def procesar_imagen(ruta_imagen: str, template_data: Any, config: Dict[str, Any]) -> List[Dict]:
-    """
-    Procesa una sola imagen con el template (versión single detection).
-    
-    Args:
-        ruta_imagen: Ruta a la imagen
-        template_data: Template procesado
-        config: Diccionario de configuración
-    
-    Returns:
-        Lista de detecciones filtradas
-    """
+    """Procesa una sola imagen con el template (versión single detection)."""
     nombre_imagen = os.path.basename(ruta_imagen)
     template_procesado = template_data
 
@@ -132,23 +115,9 @@ def procesar_imagen(ruta_imagen: str, template_data: Any, config: Dict[str, Any]
 
 
 def procesar_imagen_multi(ruta_imagen: str, template_data: Any, config: Dict[str, Any]) -> List[Dict]:
-    """
-    Procesa una imagen para múltiples detecciones.
-    
-    Args:
-        ruta_imagen: Ruta a la imagen
-        template_data: Template procesado
-        config: Diccionario de configuración
-    
-    Returns:
-        Lista de detecciones filtradas
-    """
+    """Procesa una imagen para múltiples detecciones."""
     nombre_imagen = os.path.basename(ruta_imagen)
     template_procesado = template_data
-
-    print(f"\n{'='*60}")
-    print(f"PROCESANDO: {nombre_imagen}")
-    print(f"{'='*60}")
 
     # Cargar template original para comparación de escalas
     ruta_template = os.path.join(config['PATH_TEMPLATE'], 'pattern.png')
@@ -156,7 +125,6 @@ def procesar_imagen_multi(ruta_imagen: str, template_data: Any, config: Dict[str
 
     # Preprocesar imagen
     imagen_original, imagen_procesada = preprocesar_imagen(ruta_imagen, config)
-    print(f"Imagen cargada: {imagen_original.shape[1]}x{imagen_original.shape[0]} px")
 
     # Visualizar preprocesamiento
     visualizar_preprocesamiento(template_procesado, imagen_procesada, nombre_imagen, config)
@@ -169,12 +137,8 @@ def procesar_imagen_multi(ruta_imagen: str, template_data: Any, config: Dict[str
     # Visualizar mapas de matching
     visualizar_mapas_coincidencias(mapas_resultado, nombre_imagen, config)
 
-    print(f"Detecciones antes del filtrado: {len(detecciones)}")
-
     # Aplicar NMS optimizado para múltiples detecciones
     detecciones_filtradas = aplicar_nms_multi_deteccion(detecciones, config)
-
-    print(f"Detecciones finales: {len(detecciones_filtradas)}")
 
     # Generar todas las visualizaciones
     visualizar_comparacion_escalas(imagen_original, template_original, mapas_resultado, nombre_imagen, config)
@@ -185,73 +149,6 @@ def procesar_imagen_multi(ruta_imagen: str, template_data: Any, config: Dict[str
 
 
 def crear_directorio_resultados(config: Dict[str, Any]):
-    """
-    Crea el directorio de resultados si no existe.
-    
-    Args:
-        config: Diccionario de configuración
-    """
+    """Crea el directorio de resultados si no existe."""
     carpeta_resultados = config.get('CARPETA_RESULTADOS', 'resultados')
     os.makedirs(carpeta_resultados, exist_ok=True)
-
-
-def mostrar_resumen_configuracion(config: Dict[str, Any], titulo: str = "CONFIGURACIÓN ACTUAL"):
-    """
-    Muestra un resumen de la configuración actual.
-    
-    Args:
-        config: Diccionario de configuración
-        titulo: Título del resumen
-    """
-    print("\n" + "=" * 60)
-    print(f"    {titulo}    ")
-    print("=" * 60)
-    print(f"   Método de matching: {config.get('METODO_MATCHING', 'N/A')}")
-    
-    if 'UMBRAL_SIMPLE_DETECCION' in config:
-        print(f"   Umbral de detección: {config['UMBRAL_SIMPLE_DETECCION']}")
-    elif 'UMBRAL_DETECCION' in config:
-        print(f"   Umbral de detección: {config['UMBRAL_DETECCION']}")
-    
-    print(f"   Rango de escalas: {config.get('ESCALA_MIN', 'N/A')}x - {config.get('ESCALA_MAX', 'N/A')}x (paso: {config.get('PASO_ESCALA', 'N/A')})")
-    
-    if 'UMBRAL_CANNY' in config and isinstance(config['UMBRAL_CANNY'], tuple):
-        print(f"   Umbral Canny: {config['UMBRAL_CANNY'][0]} - {config['UMBRAL_CANNY'][1]}")
-    elif 'UMBRAL_CANNY_MIN' in config:
-        print(f"   Umbral Canny: {config.get('UMBRAL_CANNY_MIN', 'N/A')} - {config.get('UMBRAL_CANNY_MAX', 'N/A')}")
-    
-    if 'CLUSTERING_EPS' in config:
-        print(f"   Clustering eps: {config['CLUSTERING_EPS']}")
-    
-    if 'LIMITE_FINAL' in config:
-        print(f"   Límite detecciones: {config['LIMITE_FINAL']}")
-    elif 'LIMITE_DETECCIONES_FINALES' in config:
-        print(f"   Límite detecciones: {config['LIMITE_DETECCIONES_FINALES']}")
-    
-    print()
-
-
-def mostrar_resumen_resultados(resultados_totales: Dict[str, List[Dict]], config: Dict[str, Any]):
-    """
-    Muestra un resumen final de los resultados.
-    
-    Args:
-        resultados_totales: Diccionario con resultados por imagen
-        config: Diccionario de configuración
-    """
-    print("\n" + "=" * 60)
-    print("                    RESUMEN FINAL                        ")
-    print("=" * 60)
-
-    total_detecciones = 0
-    
-    for nombre_img, detecciones in resultados_totales.items():
-        num_detecciones = len(detecciones)
-        total_detecciones += num_detecciones
-        print(f"{nombre_img}: {num_detecciones} detecciones")
-
-    print("-" * 60)
-    print(f"TOTAL DETECCIONES: {total_detecciones}")
-    print(f"Resultados guardados en: {config.get('CARPETA_RESULTADOS', 'resultados')}")
-    print("Proceso completado exitosamente!")
-    print("=" * 60)

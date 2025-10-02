@@ -190,7 +190,6 @@ def buscar_coincidencias_multiescala_multi(imagen_procesada: np.ndarray,
     
     # Variables para early stopping
     mejor_confianza_global = -1.0
-    mejor_confianza_anterior = -1.0
     escala_sin_mejora = 0
     escalas_procesadas = 0
     
@@ -245,8 +244,7 @@ def buscar_coincidencias_multiescala_multi(imagen_procesada: np.ndarray,
         else:
             # Primera escala procesada
             mejor_confianza_global = mejor_confianza_actual
-        
-        mejor_confianza_anterior = mejor_confianza_actual
+    
 
     # Ordenar mapas por escala (de menor a mayor para visualización)
     mapas_resultado.sort(key=lambda x: x[1])

@@ -1,10 +1,3 @@
-"""
-Módulo de preprocesamiento para Template Matching
-=================================================
-
-Contiene funciones para cargar, preprocesar y redimensionar templates e imágenes.
-"""
-
 import cv2
 import numpy as np
 from typing import Tuple, Dict, Any
