@@ -4,7 +4,6 @@ from typing import List, Tuple, Dict, Any
 from tqdm import tqdm
 
 from .preprocessing import redimensionar_template, validar_dimensiones_template
-from .nms import aplicar_nms_por_escala
 
 def procesar_escala_individual(args) -> Tuple[List[Dict], List[Tuple]]:
     """
@@ -173,14 +172,8 @@ def buscar_coincidencias_multiescala_multi(imagen_procesada: np.ndarray,
              config['METODO_MATCHING'], config['UMBRAL_DETECCION'])
         )
         
-        # Aplicar NMS dentro de esta escala específica
-        detecciones_escala_filtradas = aplicar_nms_por_escala(
-            detecciones_escala, 
-            config.get('MAX_DETECCIONES_POR_ESCALA', 100),
-            config['UMBRAL_IOU_NMS']
-        )
-        
-        detecciones.extend(detecciones_escala_filtradas)
+        # Acumular detecciones sin NMS (se aplicará globalmente al final)
+        detecciones.extend(detecciones_escala)
         mapas_resultado.extend(mapas_escala)
         escalas_procesadas += 1
         

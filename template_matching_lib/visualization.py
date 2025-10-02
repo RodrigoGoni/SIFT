@@ -114,7 +114,6 @@ def visualizar_mapas_coincidencias(mapas_resultado: List[Tuple],
         
         ax.axis('off')
 
-    # Ocultar axes sobrantes
     for i in range(min(len(mapas_resultado), num_mapas), filas * cols):
         axes[i].axis('off')
 
@@ -140,7 +139,7 @@ def visualizar_resultado_final(imagen_original: np.ndarray,
         mejor_det = detecciones_despues_nms[0]
         x, y = mejor_det['x'], mejor_det['y']
         w, h = mejor_det['ancho'], mejor_det['alto']
-        confianza = mejor_det['confianza']
+        confianza = mejor_det.get('confianza_normalizada', mejor_det['confianza'])
         
         rect = plt.Rectangle((x, y), w, h, linewidth=3, edgecolor='red', facecolor='none')
         plt.gca().add_patch(rect)
@@ -174,7 +173,6 @@ def visualizar_comparacion_escalas(imagen_original: np.ndarray,
         
     nombre_base = os.path.splitext(nombre_imagen)[0]
     
-    # Permitir mostrar más escalas
     num_escalas = min(24, len(mapas_resultado))
     mapas_ordenados = sorted(mapas_resultado, key=lambda x: x[1])
     
@@ -194,7 +192,6 @@ def visualizar_comparacion_escalas(imagen_original: np.ndarray,
     else:
         filas, cols = 4, 6
     
-    # Ajustar tamaño de figura dinámicamente
     tamano_subplot = 4
     fig, axes = plt.subplots(filas, cols, figsize=(cols * tamano_subplot, filas * tamano_subplot), 
                             dpi=config.get('DPI_FIGURA', 100))
@@ -281,7 +278,8 @@ def visualizar_todas_las_detecciones(imagen_original: np.ndarray,
         ax1.add_patch(rect)
         
         if i < max_etiquetas_vis:
-            ax1.text(x, y-5, f'{det["confianza"]:.2f}', 
+            confianza_mostrar = det.get("confianza_normalizada", det["confianza"])
+            ax1.text(x, y-5, f'{confianza_mostrar:.2f}', 
                     fontsize=8, color='white', weight='bold',
                     bbox=dict(boxstyle="round,pad=0.2", facecolor=color, alpha=0.8))
     
@@ -302,7 +300,8 @@ def visualizar_todas_las_detecciones(imagen_original: np.ndarray,
                                edgecolor=color, facecolor='none')
         ax2.add_patch(rect)
         
-        ax2.text(x, y-10, f'#{i+1}: {det["confianza"]:.3f}', 
+        confianza_mostrar = det.get("confianza_normalizada", det["confianza"])
+        ax2.text(x, y-10, f'#{i+1}: {confianza_mostrar:.3f}', 
                 bbox=dict(boxstyle=f"round,pad={padding_bbox}", facecolor=color, alpha=0.8),
                 fontsize=10, color='white', weight='bold')
     
@@ -345,7 +344,8 @@ def visualizar_detecciones_finales_numeradas(imagen_original: np.ndarray,
                     bbox=dict(boxstyle="circle,pad=0.3", facecolor=color, alpha=0.9),
                     fontsize=14, color='white', weight='bold', ha='center')
             
-            plt.text(x+w+5, y+h//2, f'{det["confianza"]:.3f}', 
+            confianza_mostrar = det.get("confianza_normalizada", det["confianza"])
+            plt.text(x+w+5, y+h//2, f'{confianza_mostrar:.3f}', 
                     bbox=dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.8),
                     fontsize=12, color='white', weight='bold', va='center')
         

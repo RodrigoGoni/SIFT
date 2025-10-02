@@ -7,10 +7,7 @@ from .template_matching import (
 )
 from .nms import (
     aplicar_nms,
-    aplicar_nms_por_escala,
-    aplicar_nms_multi_deteccion,
     calcular_iou,
-    agrupar_detecciones_por_clustering,
     normalizar_detecciones_globalmente
 )
 from .visualization import (

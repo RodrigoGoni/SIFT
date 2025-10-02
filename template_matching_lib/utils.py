@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 
 from .preprocessing import preprocesar_imagen
 from .template_matching import buscar_coincidencias_multiescala, buscar_coincidencias_multiescala_multi
-from .nms import aplicar_nms, aplicar_nms_multi_deteccion
+from .nms import aplicar_nms
 from .visualization import (
     visualizar_preprocesamiento,
     visualizar_mapas_coincidencias,
@@ -119,11 +119,25 @@ def procesar_imagen_multi(ruta_imagen: str, template_data: Any, config: Dict[str
     visualizar_mapas_coincidencias(mapas_resultado, nombre_imagen, config)
 
     # Aplicar NMS optimizado para múltiples detecciones
-    detecciones_filtradas = aplicar_nms_multi_deteccion(detecciones, config)
+    detecciones_filtradas = aplicar_nms(
+        detecciones, 
+        config.get('UMBRAL_CONFIANZA_NORMALIZADA', 0.5), 
+        config.get('UMBRAL_IOU_NMS', 0.2), 
+        config.get('LIMITE_FINAL', 50)
+    )
+
+    # Para visualización: filtrar detecciones pre-NMS para mostrar solo las más relevantes
+    umbral_visualizacion = config.get('UMBRAL_DETECCION', 0.05)
+    detecciones_para_viz = [d for d in detecciones if d['confianza'] >= umbral_visualizacion]
+    
+    # Si aún son demasiadas, tomar solo las mejores
+    max_detecciones_viz = config.get('MAX_DETECCIONES_VISUALIZACION', 200)
+    if len(detecciones_para_viz) > max_detecciones_viz:
+        detecciones_para_viz = sorted(detecciones_para_viz, key=lambda x: x['confianza'], reverse=True)[:max_detecciones_viz]
 
     # Generar todas las visualizaciones
     visualizar_comparacion_escalas(imagen_original, template_original, mapas_resultado, nombre_imagen, config)
-    visualizar_todas_las_detecciones(imagen_original, detecciones, detecciones_filtradas, nombre_imagen, config)
+    visualizar_todas_las_detecciones(imagen_original, detecciones_para_viz, detecciones_filtradas, nombre_imagen, config)
     visualizar_detecciones_finales_numeradas(imagen_original, detecciones_filtradas, nombre_imagen, config)
 
     return detecciones_filtradas

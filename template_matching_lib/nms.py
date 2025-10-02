@@ -27,68 +27,57 @@ def calcular_iou(det1: Dict, det2: Dict) -> float:
     return area_inter / area_union if area_union > 0 else 0.0
 
 
-def aplicar_nms(detecciones: List[Dict], config: Dict[str, Any]) -> List[Dict]:
+def aplicar_nms(detecciones, umbral_confianza, umbral_iou, max_detecciones=50):
     """
-    Aplica Non-Maximum Suppression simplificado.
-    
+    Aplica Non-Maximum Suppression a las detecciones usando normalización global.
     """
     if not detecciones:
         return []
     
-    # Filtrar por umbral y ordenar por confianza
-    umbral_final = config.get('UMBRAL_FINAL_NMS', config.get('UMBRAL_DETECCION', 0.04))
-    max_candidatos = config.get('MAXIMO_MEJORES_CANDIDATOS', 10)
-    limite_final = config.get('LIMITE_DETECCIONES_FINALES', 10)
-    umbral_iou = config.get('UMBRAL_IOU_NMS', 0.04)
+    # Normalizar las detecciones globalmente
+    detecciones_normalizadas = normalizar_detecciones_globalmente(detecciones)
     
-    detecciones_candidatas = [d for d in detecciones if d['confianza'] >= umbral_final]
-    if not detecciones_candidatas:
-        detecciones_candidatas = sorted(detecciones, key=lambda x: x['confianza'], reverse=True)[:max_candidatos]
+    # Filtrar por umbral de confianza usando valores normalizados
+    detecciones_filtradas = [
+        det for det in detecciones_normalizadas
+        if det['confianza_normalizada'] >= umbral_confianza
+    ]
     
-    detecciones_ordenadas = sorted(detecciones_candidatas, key=lambda x: x['confianza'], reverse=True)
-    detecciones_finales = []
-    
-    while detecciones_ordenadas and len(detecciones_finales) < limite_final:
-        mejor = detecciones_ordenadas.pop(0)
-        detecciones_finales.append(mejor)
-        
-        detecciones_filtradas = []
-        for det in detecciones_ordenadas:
-            iou = calcular_iou(mejor, det)
-            if iou < umbral_iou:
-                detecciones_filtradas.append(det)
-        
-        detecciones_ordenadas = detecciones_filtradas
-
-    return detecciones_finales
-
-
-def aplicar_nms_por_escala(detecciones_escala: List[Dict], 
-                          max_detecciones: int = 100,
-                          umbral_iou: float = 0.2) -> List[Dict]:
-    """
-    Aplica NMS dentro de una escala específica para reducir redundancia.
-    """
-    if not detecciones_escala:
+    if not detecciones_filtradas:
         return []
     
-    detecciones_ordenadas = sorted(detecciones_escala, key=lambda x: x['confianza'], reverse=True)
-    detecciones_filtradas = []
+    # Ordenar por confianza normalizada descendente
+    detecciones_filtradas = sorted(
+        detecciones_filtradas,
+        key=lambda x: x['confianza_normalizada'],
+        reverse=True
+    )
     
-    for deteccion in detecciones_ordenadas:
-        if len(detecciones_filtradas) >= max_detecciones:
-            break
-            
-        # Verificar solapamiento con detecciones ya seleccionadas
-        if not any(calcular_iou(deteccion, det) > umbral_iou for det in detecciones_filtradas):
-            detecciones_filtradas.append(deteccion)
+    # Aplicar NMS
+    detecciones_seleccionadas = []
+    indice = 0
     
-    return detecciones_filtradas
+    while len(detecciones_seleccionadas) < max_detecciones and indice < len(detecciones_filtradas):
+        deteccion_actual = detecciones_filtradas[indice]
+        
+        # Calcular IoU máximo con detecciones ya seleccionadas
+        max_iou = 0
+        for det_seleccionada in detecciones_seleccionadas:
+            iou = calcular_iou(deteccion_actual, det_seleccionada)
+            max_iou = max(max_iou, iou)
+        
+        if max_iou < umbral_iou:
+            detecciones_seleccionadas.append(deteccion_actual)
+        
+        indice += 1
+    
+    return detecciones_seleccionadas
+
 
 
 def normalizar_detecciones_globalmente(detecciones: List[Dict]) -> List[Dict]:
     """
-    Normaliza las confianzas de todas las detecciones de 0 a 1.
+    Normaliza las confianzas usando el máximo como referencia.
     """
     if not detecciones:
         return []
@@ -99,110 +88,18 @@ def normalizar_detecciones_globalmente(detecciones: List[Dict]) -> List[Dict]:
     if not confianzas:
         return []
     
-    # Calcular min y max globales
-    confianza_min = min(confianzas)
+    # Usar el máximo como referencia (normalización 0-1 basada en máximo)
     confianza_max = max(confianzas)
     
-    # Evitar división por cero
-    if confianza_max == confianza_min:
-        for det in detecciones:
-            det['confianza_original'] = det['confianza']
-            det['confianza'] = 0.5
-        return detecciones
-    
-    # Normalizar cada detección
+    # Normalizar cada detección dividiendo por el máximo
     detecciones_normalizadas = []
     for det in detecciones:
         det_normalizada = det.copy()
-        det_normalizada['confianza_original'] = det['confianza']
-        det_normalizada['confianza'] = (det['confianza'] - confianza_min) / (confianza_max - confianza_min)
+        
+        # Normalización simple: dividir por el máximo
+        confianza_normalizada = det['confianza'] / confianza_max
+        det_normalizada['confianza_normalizada'] = confianza_normalizada
+        
         detecciones_normalizadas.append(det_normalizada)
     
     return detecciones_normalizadas
-
-
-def agrupar_detecciones_por_clustering(detecciones: List[Dict], 
-                                      eps: float = 15, 
-                                      min_samples: int = 1) -> List[List[Dict]]:
-    """
-    Agrupa detecciones cercanas usando clustering DBSCAN.
-    """
-    if len(detecciones) < 2:
-        return [detecciones] if detecciones else []
-    
-    # Extraer coordenadas del centro
-    coordenadas = np.array([[det['centro_x'], det['centro_y']] for det in detecciones])
-    
-    # Aplicar DBSCAN
-    clustering = DBSCAN(eps=eps, min_samples=min_samples)
-    etiquetas = clustering.fit_predict(coordenadas)
-    
-    # Agrupar por etiquetas
-    clusters = {}
-    for i, etiqueta in enumerate(etiquetas):
-        clusters.setdefault(etiqueta, []).append(detecciones[i])
-    
-    grupos = list(clusters.values())
-    return grupos
-
-
-def aplicar_nms_multi_deteccion(detecciones: List[Dict], config: Dict[str, Any]) -> List[Dict]:
-    """
-    Aplica NMS optimizado para múltiples detecciones con normalización global.
-    """
-    if not detecciones:
-        return []
-    
-    # PASO 1: Normalizar todas las detecciones globalmente
-    detecciones_normalizadas = normalizar_detecciones_globalmente(detecciones)
-    
-    # PASO 2: Filtrar por umbral de confianza normalizada
-    umbral_normalizado = config.get('UMBRAL_CONFIANZA_NORMALIZADA', 0.6)
-    detecciones_candidatas = [d for d in detecciones_normalizadas if d['confianza'] >= umbral_normalizado]
-    
-    if not detecciones_candidatas:
-        max_candidatos = config.get('MAX_CANDIDATOS', 50)
-        detecciones_candidatas = sorted(detecciones_normalizadas, key=lambda x: x['confianza'], reverse=True)[:max_candidatos]
-    
-    # PASO 3: Aplicar NMS entre escalas diferentes
-    detecciones_candidatas_ordenadas = sorted(detecciones_candidatas, key=lambda x: x['confianza'], reverse=True)
-    detecciones_inter_escala = []
-    
-    umbral_iou = config.get('UMBRAL_IOU_NMS', 0.2)
-    for deteccion in detecciones_candidatas_ordenadas:
-        if not any(calcular_iou(deteccion, det) > umbral_iou for det in detecciones_inter_escala):
-            detecciones_inter_escala.append(deteccion)
-    
-    # PASO 4: Agrupar detecciones restantes por clustering espacial
-    clustering_eps = config.get('CLUSTERING_EPS', 15)
-    clustering_min = config.get('CLUSTERING_MIN', 1)
-    grupos_detecciones = agrupar_detecciones_por_clustering(
-        detecciones_inter_escala, 
-        eps=clustering_eps, 
-        min_samples=clustering_min
-    )
-    
-    detecciones_finales = []
-    
-    # PASO 5: Aplicar NMS refinado dentro de cada grupo
-    max_por_grupo = config.get('MAX_DETECCIONES_POR_GRUPO', 8)
-    for i, grupo in enumerate(grupos_detecciones):
-        
-        grupo_ordenado = sorted(grupo, key=lambda x: x['confianza'], reverse=True)
-        detecciones_grupo = []
-        
-        while grupo_ordenado and len(detecciones_grupo) < max_por_grupo:
-            mejor = grupo_ordenado.pop(0)
-            detecciones_grupo.append(mejor)
-            
-            # Filtrar detecciones muy cercanas dentro del grupo
-            grupo_ordenado = [det for det in grupo_ordenado 
-                            if calcular_iou(mejor, det) <= umbral_iou]
-        
-        detecciones_finales.extend(detecciones_grupo)
-    
-    # PASO 6: Ordenar y limitar resultado final
-    limite_final = config.get('LIMITE_FINAL', 50)
-    detecciones_finales = sorted(detecciones_finales, key=lambda x: x['confianza'], reverse=True)[:limite_final]
-    
-    return detecciones_finales
