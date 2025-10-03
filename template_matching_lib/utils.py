@@ -16,7 +16,7 @@ from .visualization import (
 )
 
 
-def obtener_imagenes(patron_imagenes: str = None, config: Dict[str, Any] = None, excluir_multi: bool = True) -> List[str]:
+def obtener_imagenes(config: Dict[str, Any] = None, excluir_multi: bool = True) -> List[str]:
     """
     Obtiene la lista de imágenes del directorio.
     """
@@ -30,26 +30,21 @@ def obtener_imagenes(patron_imagenes: str = None, config: Dict[str, Any] = None,
     
     imagenes = []
     
-    if patron_imagenes:
-        # Buscar por patrón específico
-        patrones = [patron_imagenes]
-        for patron in patrones:
-            imagenes.extend(glob.glob(os.path.join(directorio_imagenes, patron + '.png')))
-    else:
-        # Si no hay patrón específico, usar patrones por defecto o todas las imágenes
-        patrones_por_defecto = ['*logo*', '*retro*', '*LOGO*']
-        
-        # Intentar con patrones por defecto primero
-        for patron in patrones_por_defecto:
-            imagenes.extend(glob.glob(os.path.join(directorio_imagenes, patron + '.png')))
-        
-        # Si no se encontraron imágenes con patrones, obtener todas las .png
-        if not imagenes:
-            imagenes = [
-                os.path.join(directorio_imagenes, f) 
-                for f in os.listdir(directorio_imagenes) 
-                if f.lower().endswith('.png')
-            ]
+    # Si no hay patrón específico, usar patrones por defecto o todas las imágenes
+    patrones_por_defecto = ['*logo*', '*retro*', '*LOGO*']
+    
+    # Intentar con patrones por defecto primero
+    for patron in patrones_por_defecto:
+        imagenes.extend(glob.glob(os.path.join(directorio_imagenes, patron + '.png')))
+        imagenes.extend(glob.glob(os.path.join(directorio_imagenes, patron + '.jpg')))
+    
+    # Si no se encontraron imágenes con patrones, obtener todas las imágenes válidas
+    if not imagenes:
+        imagenes = [
+            os.path.join(directorio_imagenes, f) 
+            for f in os.listdir(directorio_imagenes) 
+            if f.lower().endswith(('.png', '.jpg', '.jpeg'))
+        ]
     
     # Excluir imágenes multi si se especifica
     if excluir_multi:
