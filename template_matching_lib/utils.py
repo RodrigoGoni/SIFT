@@ -121,9 +121,7 @@ def procesar_imagen_multi(ruta_imagen: str, template_data: Any, config: Dict[str
     # Aplicar NMS optimizado para múltiples detecciones
     detecciones_filtradas = aplicar_nms(
         detecciones, 
-        config.get('UMBRAL_CONFIANZA_NORMALIZADA', 0.5), 
-        config.get('UMBRAL_IOU_NMS', 0.2), 
-        config.get('LIMITE_FINAL', 50)
+        config
     )
 
     # Para visualización: filtrar detecciones pre-NMS para mostrar solo las más relevantes

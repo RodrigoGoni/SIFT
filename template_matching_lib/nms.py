@@ -27,13 +27,15 @@ def calcular_iou(det1: Dict, det2: Dict) -> float:
     return area_inter / area_union if area_union > 0 else 0.0
 
 
-def aplicar_nms(detecciones, umbral_confianza, umbral_iou, max_detecciones=50):
+def aplicar_nms(detecciones, config):
     """
     Aplica Non-Maximum Suppression a las detecciones usando normalización global.
     """
     if not detecciones:
         return []
-    
+    umbral_confianza = config['UMBRAL_CONFIANZA_NORMALIZADA']
+    umbral_iou = config['UMBRAL_IOU_NMS']
+    max_detecciones = config['LIMITE_FINAL']
     # Normalizar las detecciones globalmente
     detecciones_normalizadas = normalizar_detecciones_globalmente(detecciones)
     
